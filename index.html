@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voz Lab: conversión de voz con Fourier</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>Voz Lab</h1>
+  <p>Haz que una voz se parezca a otra usando STFT, cepstrum y phase vocoder. Todo se procesa en tu dispositivo.</p>
+  <p class="status" id="micStatus">Micrófono: sin consultar</p>
+</header>
+
+<main>
+  <section class="notice">
+    <label><input type="checkbox" id="consent">
+      Confirmo que la persona de la voz objetivo (B) dio su consentimiento y que usaré esta herramienta de forma responsable, sin suplantar identidades.</label>
+  </section>
+
+  <section id="stepB">
+    <h2>1. Voz objetivo (B)</h2>
+    <p class="hint">Graba o sube de 30 a 60 s de habla libre. De ahí se calcula el perfil de tono y timbre.</p>
+    <div class="rec" data-slot="B">
+      <div class="row">
+        <button class="rec-btn">Grabar</button>
+        <button class="pause-btn ghost" disabled>Pausar</button>
+        <button class="stop-btn" disabled>Detener</button>
+        <label class="file">Subir archivo<input type="file" accept="audio/*"></label>
+        <span class="time">0:00</span>
+      </div>
+      <div class="meter"><i></i></div>
+      <audio controls controlsList="nodownload"></audio>
+      <p class="msg" role="status"></p>
+    </div>
+    <div class="row">
+      <button id="mkProfile" disabled>Crear perfil de B</button>
+      <button id="delProfile" class="ghost" disabled>Borrar perfil</button>
+    </div>
+    <p class="msg" id="profileMsg" role="status">Aún no hay perfil guardado.</p>
+  </section>
+
+  <section id="stepA">
+    <h2>2. Tu voz (A)</h2>
+    <p class="hint">Graba o sube la voz que quieres convertir (máximo 3 minutos).</p>
+    <div class="rec" data-slot="A">
+      <div class="row">
+        <button class="rec-btn">Grabar</button>
+        <button class="pause-btn ghost" disabled>Pausar</button>
+        <button class="stop-btn" disabled>Detener</button>
+        <label class="file">Subir archivo<input type="file" accept="audio/*"></label>
+        <span class="time">0:00</span>
+      </div>
+      <div class="meter"><i></i></div>
+      <audio controls controlsList="nodownload"></audio>
+      <p class="msg" role="status"></p>
+    </div>
+  </section>
+
+  <section id="anaA" hidden>
+    <h2>Análisis de tu voz (A)</h2>
+    <label class="slider">Posición del cuadro analizado
+      <input type="range" id="pos" min="0" max="100" value="50"></label>
+    <p class="msg" id="aInfo" role="status"></p>
+    <div class="plots">
+      <figure><figcaption>Señal en el tiempo (amplitud)</figcaption><canvas id="aWave" width="600" height="160"></canvas></figure>
+      <figure><figcaption>Espectrograma (0 a 8 kHz)</figcaption><canvas id="aSpec"></canvas></figure>
+      <figure><figcaption>Espectro (FFT) y envolvente del cuadro (dB)</figcaption><canvas id="aSpectrum" width="600" height="220"></canvas></figure>
+      <figure><figcaption>Cepstrum del cuadro: el pico marca el periodo de F0</figcaption><canvas id="aCep" width="600" height="220"></canvas></figure>
+    </div>
+  </section>
+
+  <section id="stepC">
+    <h2>3. Convertir</h2>
+    <div class="params">
+      <label>Motor de síntesis
+        <select id="engine">
+          <option value="pv" selected>Phase vocoder (STFT)</option>
+          <option value="world">Vocoder fuente-filtro (tipo WORLD)</option>
+        </select></label>
+      <label>Intensidad: <output id="alphaOut">100</output> %
+        <input type="range" id="alpha" min="0" max="100" value="100"></label>
+      <label>Ventana
+        <select id="win"><option value="2048" selected>2048</option><option value="4096">4096</option></select></label>
+      <label>Orden de liftering: <output id="lifOut">40</output>
+        <input type="range" id="lifter" min="10" max="100" value="40"></label>
+      <label>Velocidad: <output id="strOut">1.00</output>x
+        <input type="range" id="stretch" min="0.5" max="2" step="0.05" value="1"></label>
+      <label>Tipo de ventana
+        <select id="wtype"><option value="hann" selected>Hann</option><option value="hamming">Hamming</option></select></label>
+      <label>Solapamiento
+        <select id="hop"><option value="4" selected>75 % (hop = ventana/4)</option><option value="2">50 % (hop = ventana/2)</option></select></label>
+      <label>Entonación
+        <select id="inton">
+          <option value="match" selected>Imitar la de B (media y variación)</option>
+          <option value="keep">Conservar la de A (solo se desplaza)</option>
+          <option value="flat">Aplanar hacia el tono de B</option>
+        </select></label>
+      <label class="chk"><input type="checkbox" id="unv" checked> No cambiar el tono en consonantes sordas</label>
+      <label class="chk"><input type="checkbox" id="lock" checked> Bloqueo de fase (menos artefactos)</label>
+    </div>
+    <fieldset class="mimic">
+      <legend>Imitación del timbre y el ritmo</legend>
+      <label class="chk"><input type="checkbox" id="vtln" checked> Mover los formantes hacia los de B (deformación de frecuencias)</label>
+      <label class="chk"><input type="checkbox" id="vart" checked> Imitar cuánto varía el timbre de B, no solo su promedio</label>
+      <label class="chk"><input type="checkbox" id="hnr" checked> Igualar el soplo de la voz (relación armónico/ruido)</label>
+      <label class="chk"><input type="checkbox" id="rate"> Igualar la velocidad de habla de B (reemplaza el control de velocidad)</label>
+    </fieldset>
+    <div class="row">
+      <button id="convert" disabled>Convertir</button>
+      <button id="cancel" class="ghost" disabled>Cancelar</button>
+    </div>
+    <progress id="prog" value="0" max="1"></progress>
+    <p class="msg" id="convMsg" role="status"></p>
+  </section>
+
+  <section id="stepD" hidden>
+    <h2>4. Comparar</h2>
+    <div class="players">
+      <figure><figcaption>A: original</figcaption><audio id="pA" controls controlsList="nodownload"></audio></figure>
+      <figure><figcaption>B: objetivo</figcaption><audio id="pB" controls controlsList="nodownload"></audio></figure>
+      <figure><figcaption>C: convertida</figcaption><audio id="pC" controls controlsList="nodownload"></audio></figure>
+    </div>
+    <table id="stats"></table>
+    <div class="plots">
+      <figure><figcaption>Espectrograma de A</figcaption><canvas id="sA"></canvas></figure>
+      <figure><figcaption>Espectrograma de C</figcaption><canvas id="sC"></canvas></figure>
+      <figure><figcaption>F0 por cuadro (Hz)</figcaption><canvas id="cF0" width="600" height="220"></canvas></figure>
+      <figure><figcaption id="envCap">Envolventes medias, 0 a 8 kHz (dB relativo)</figcaption><canvas id="cEnv" width="600" height="220"></canvas></figure>
+    </div>
+  </section>
+
+  <section class="explain">
+    <h2>Cómo funciona</h2>
+    <details><summary>Fourier y STFT</summary><p>La FFT descompone un sonido en frecuencias. La STFT lo hace por ventanas cortas y superpuestas, y así vemos cómo cambia el espectro en el tiempo.</p></details>
+    <details><summary>Cepstrum</summary><p>Es la transformada inversa del logaritmo del espectro. Las quefrencias bajas dan la envolvente (el timbre) y un pico en quefrencias altas da el periodo del tono (F0).</p></details>
+    <details><summary>Phase vocoder</summary><p>Estira el audio ajustando las fases de cada frecuencia entre ventanas. Al estirar y remuestrear, el tono cambia sin cambiar la duración.</p></details>
+    <details><summary>Cómo se mide el tono (YIN)</summary><p>YIN compara cada fragmento con versiones de sí mismo desplazadas en el tiempo; el desplazamiento con menor diferencia es el periodo del tono. Cada cuadro da varios candidatos y el algoritmo de Viterbi elige la ruta más continua, lo que evita saltos de octava.</p></details>
+    <details><summary>Vocoder fuente-filtro (tipo WORLD)</summary><p>En lugar de manipular la STFT, separa la voz cada 5 ms en tres parámetros: el tono (F0), la envolvente espectral, medida con una ventana del tamaño de tres periodos (CheapTrick), y la aperiodicidad, la proporción de ruido en cada banda de frecuencia. Para resintetizar coloca un pulso por periodo, cada uno filtrado con la envolvente en fase mínima, y suma ruido según la aperiodicidad. Como tono y envolvente están separados, cambiar uno no deforma el otro.</p></details>
+    <details><summary>Qué hace esta conversión</summary><p>Lleva el tono de A al de B igualando su media y su variación (en escala logarítmica), así la melodía conserva su forma pero se mueve como la de B. Luego mueve los formantes con un factor de deformación de frecuencias, ajusta la envolvente de cada cuadro hacia la media y la dispersión de B, y añade o quita soplo. Opcionalmente iguala la velocidad de habla. Imita tono, timbre y ritmo general, no el acento ni la forma de articular.</p></details>
+  </section>
+</main>
+
+<script src="dsp.js"></script>
+<script src="world.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
